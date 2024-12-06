@@ -1,0 +1,58 @@
+import 'package:uuid/uuid.dart';
+
+class Order {
+  final String orderID;
+  final Map<String, double> items;
+  final double totalAmount;
+  final DateTime timestamp;
+
+  Order({
+    String? orderID,
+    required this.items,
+    required this.totalAmount,
+    DateTime? timestamp
+  }) : 
+    orderID = orderID ?? Uuid().v4(),
+    timestamp = timestamp ?? DateTime.now();
+
+  bool validate() {
+    if (items.isEmpty) return false;
+
+    return items.values.every((quantity) => quantity > 0);
+  }
+
+  static double calculateTotal(Map<String, double> orderItems, 
+                                Map<String, double> inventoryPrices) {
+    double total = 0;
+
+    orderItems.forEach((vegetableId, quantity) {
+      double price = inventoryPrices[vegetableId] ?? 0;
+      
+      if (quantity >= 10) {
+        total += price * quantity * 0.9;
+      } else {
+        total += price * quantity;
+      }
+    });
+
+    return total;
+  }
+
+  factory Order.fromJson(Map<String, dynamic> json) {
+    return Order(
+      orderID: json['orderID'],
+      items: Map<String, double>.from(json['items']),
+      totalAmount: json['totalAmount'],
+      timestamp: DateTime.parse(json['timestamp']),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'orderID': orderID,
+      'items': items,
+      'totalAmount': totalAmount,
+      'timestamp': timestamp.toIso8601String(),
+    };
+  }
+}
