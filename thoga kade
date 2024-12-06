@@ -1,0 +1,227 @@
+class InventoryRepository {
+  List<Vegetable> vegetables = [];
+  static const String inventoryFilePath = 'inventory.json';
+
+  void addVegetable(Vegetable vegetable) {
+    vegetables.add(vegetable);
+    saveInventoryToFile();
+  }
+
+  void removeVegetable(String id) {
+    vegetables.removeWhere((veg) => veg.id == id);
+    saveInventoryToFile();
+  }
+
+  void updateStock(String id, double quantity) {
+    final vegetable = vegetables.firstWhere((veg) => veg.id == id);
+    vegetable.availableQuantity = quantity;
+    saveInventoryToFile();
+  }
+
+  void saveInventoryToFile() {
+    final file = File(inventoryFilePath);
+    final jsonList = vegetables.map((veg) => veg.toMap()).toList();
+    file.writeAsStringSync(json.encode(jsonList));
+  }
+
+  void loadInventoryFromFile() {
+    final file = File(inventoryFilePath);
+    if (file.existsSync()) {
+      final jsonString = file.readAsStringSync();
+      final List<dynamic> jsonList = json.decode(jsonString);
+      vegetables = jsonList.map((map) => Vegetable.fromMap(map)).toList();
+    }
+  }
+  List<Vegetable> getAllVegetables() {
+    return vegetables;
+  }
+
+  Vegetable? findVegetableById(String id) {
+    try {
+      return vegetables.firstWhere((veg) => veg.id == id);
+    } catch (e) {
+      return null;
+    }
+  }
+}
+
+class ThogaKadeManager {
+  final InventoryRepository inventoryRepository = InventoryRepository();
+  final List<Order> orderHistory = [];
+
+  Order processOrder(Map<String, double> orderItems) {
+    double totalAmount = 0;
+    
+    orderItems.forEach((id, quantity) {
+      final vegetable = inventoryRepository.findVegetableById(id);
+      
+      if (vegetable == null) {
+        print('Vegetable with ID $id not found');
+        return;
+      }
+      
+      if (vegetable.availableQuantity < quantity) {
+        print('Insufficient stock for ${vegetable.name}');
+        return;
+      }
+      
+      totalAmount += vegetable.pricePerKg * quantity;
+      
+      inventoryRepository.updateStock(
+        id, 
+        vegetable.availableQuantity - quantity
+      );
+    });
+
+    final order = Order(
+      orderID: DateTime.now().millisecondsSinceEpoch.toString(),
+      items: orderItems,
+      totalAmount: totalAmount,
+      timestamp: DateTime.now(),
+    );
+    
+    orderHistory.add(order);
+    return order;
+  }
+
+  void generateReport() {
+    print('\n--- Daily Sales Report ---');
+    print('Total Orders: ${orderHistory.length}');
+    
+    double totalSales = 0;
+    orderHistory.forEach((order) {
+      totalSales += order.totalAmount;
+      print('Order ${order.orderID}: \$${order.totalAmount.toStringAsFixed(2)}');
+    });
+    
+    print('Total Sales: \$${totalSales.toStringAsFixed(2)}');
+  }
+
+  void checkLowStockAlerts() {
+    print('\n--- Low Stock Alerts ---');
+    inventoryRepository.getAllVegetables().forEach((veg) {
+      if (veg.availableQuantity < 10) {
+        print('${veg.name}: Only ${veg.availableQuantity} kg remaining');
+      }
+    });
+  }
+}
+
+import 'dart:io';
+
+class CommandHandler {
+  final ThogaKadeManager manager = ThogaKadeManager();
+
+  void start() {
+    while (true) {
+      displayMenu();
+      String? choice = stdin.readLineSync();
+      
+      switch (choice) {
+        case '1':
+          addVegetable();
+          break;
+        case '2':
+          processOrder();
+          break;
+        case '3':
+          manager.generateReport();
+          break;
+        case '4':
+          manager.checkLowStockAlerts();
+          break;
+        case '5':
+          listInventory();
+          break;
+        case '6':
+          print('Exiting...');
+          return;
+        default:
+          print('Invalid option. Try again.');
+      }
+    }
+  }
+
+  void displayMenu() {
+    print('\n--- Thoga Kade Management ---');
+    print('1. Add Vegetable');
+    print('2. Process Order');
+    print('3. Generate Sales Report');
+    print('4. Check Low Stock');
+    print('5. List Inventory');
+    print('6. Exit');
+    print('Enter your choice: ');
+  }
+
+  void addVegetable() {
+    print('Enter Vegetable Name:');
+    String? name = stdin.readLineSync();
+    
+    print('Enter Price per KG:');
+    double? price = double.tryParse(stdin.readLineSync() ?? '0');
+    
+    print('Enter Available Quantity:');
+    double? quantity = double.tryParse(stdin.readLineSync() ?? '0');
+    
+    print('Enter Category (leafy/root/fruit):');
+    String? category = stdin.readLineSync();
+
+    if (name == null || price == null || quantity == null || category == null) {
+      print('Invalid input. Vegetable not added.');
+      return;
+    }
+
+    final vegetable = Vegetable(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: name,
+      pricePerKg: price,
+      availableQuantity: quantity,
+      category: category,
+      expiryDate: DateTime.now().add(Duration(days: 30)), // default 30 days expiry
+    );
+
+    manager.inventoryRepository.addVegetable(vegetable);
+    print('Vegetable added successfully!');
+  }
+
+  void processOrder() {
+    Map<String, double> orderItems = {};
+    
+    while (true) {
+      print('Enter Vegetable ID (or "done" to finish):');
+      String? id = stdin.readLineSync();
+      
+      if (id == 'done') break;
+      
+      print('Enter Quantity:');
+      double? quantity = double.tryParse(stdin.readLineSync() ?? '0');
+      
+      if (id == null || quantity == null) {
+        print('Invalid input.');
+        continue;
+      }
+      
+      orderItems[id] = quantity;
+    }
+    
+    if (orderItems.isNotEmpty) {
+      final order = manager.processOrder(orderItems);
+      print('Order processed. Total: \$${order.totalAmount.toStringAsFixed(2)}');
+    }
+  }
+
+  void listInventory() {
+    print('\n--- Current Inventory ---');
+    manager.inventoryRepository.getAllVegetables().forEach((veg) {
+      print('ID: ${veg.id}, Name: ${veg.name}, '
+            'Price: \$${veg.pricePerKg}/kg, '
+            'Stock: ${veg.availableQuantity} kg');
+    });
+  }
+}
+
+// main.dart
+void main() {
+  final commandHandler = CommandHandler();
+  commandHandler.start();
+}
